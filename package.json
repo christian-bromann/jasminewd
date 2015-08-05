@@ -1,5 +1,5 @@
 {
-  "name": "jasminewd2",
+  "name": "jasminewd2-retry",
   "description": "WebDriverJS adapter for Jasmine2.",
   "homepage": "https://github.com/angular/jasminewd",
   "keywords": [
@@ -26,5 +26,5 @@
     "test": "scripts/test.sh"
   },
   "license": "MIT",
-  "version": "0.0.5"
+  "version": "0.0.6"
 }
