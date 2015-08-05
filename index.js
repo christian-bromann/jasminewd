@@ -80,6 +80,7 @@ function wrapInControlFlow(globalFn, fnName) {
       description = description ? ('("' + description + '")') : '';
       return function(done) {
         var async = fn.length > 0;
+        var flakeErrorMessage = null;
         testFn = fn.bind(this);
 
         function controlFlowExecute() {
@@ -104,20 +105,27 @@ function wrapInControlFlow(globalFn, fnName) {
 
         function resolveFlow() {
           global._PRTRCTR_RETRIES = 0;
+
+          if(flakeErrorMessage) {
+            console.log(flakeErrorMessage);
+            flakeErrorMessage = null;
+          }
           return seal(done).apply(this, arguments);
         }
 
         function rejectFlow(err) {
-          if(typeof global._MAX_PRTRCTR_RETRIES === 'number' && global._PRTRCTR_RETRIES < global._MAX_PRTRCTR_RETRIES) {
+          if(typeof global._MAX_PRTRCTR_RETRIES === 'number' && global._PRTRCTR_RETRIES <= global._MAX_PRTRCTR_RETRIES) {
             global._PRTRCTR_RETRIES++;
-            var logTitle = util.format('============== FLAKE - retry %s/%s ===============\n' +
-                                       'Rerun ' + fnName + description + ' in control flow',
-                                       global._PRTRCTR_RETRIES, global._MAX_PRTRCTR_RETRIES);
-            return flow.execute(controlFlowExecute, logTitle).then(resolveFlow, rejectFlow);
+
+            if(!flakeErrorMessage) {
+              flakeErrorMessage = '\n===================== FLAKE =====================\n' + err.stack;
+            }
+
+            return flow.execute(controlFlowExecute, 'Rerun ' + fnName + description + ' in control flow').then(resolveFlow, rejectFlow);
           }
 
           err.stack = err.stack + '\nFrom asynchronous test: \n' + driverError.stack;
-          done.fail(err);
+          return done.fail(err);
         }
 
         flow.execute(controlFlowExecute, 'Run ' + fnName + description + ' in control flow').then(resolveFlow, rejectFlow);
