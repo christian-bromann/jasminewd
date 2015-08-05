@@ -5,7 +5,7 @@
  */
 
 var webdriver = require('selenium-webdriver');
-
+var util = require('util');
 var flow = webdriver.promise.controlFlow();
 
 /**
@@ -61,6 +61,10 @@ function validateString(stringtoValidate) {
   }
 }
 
+if(typeof global._PRTRCTR_RETRIES !== 'number') {
+  global._PRTRCTR_RETRIES = 0;
+}
+
 /**
  * Wraps a function so it runs inside a webdriver.promise.ControlFlow and
  * waits for the flow to complete before continuing.
@@ -78,7 +82,7 @@ function wrapInControlFlow(globalFn, fnName) {
         var async = fn.length > 0;
         testFn = fn.bind(this);
 
-        flow.execute(function controlFlowExecute() {
+        function controlFlowExecute() {
           return new webdriver.promise.Promise(function(fulfill, reject) {
             if (async) {
               // If testFn is async (it expects a done callback), resolve the promise of this
@@ -96,10 +100,27 @@ function wrapInControlFlow(globalFn, fnName) {
               fulfill(testFn());
             }
           }, flow);
-        }, 'Run ' + fnName + description + ' in control flow').then(seal(done), function(err) {
+        }
+
+        function resolveFlow() {
+          global._PRTRCTR_RETRIES = 0;
+          return seal(done).apply(this, arguments);
+        }
+
+        function rejectFlow(err) {
+          if(typeof global._MAX_PRTRCTR_RETRIES === 'number' && global._PRTRCTR_RETRIES < global._MAX_PRTRCTR_RETRIES) {
+            global._PRTRCTR_RETRIES++;
+            var logTitle = util.format('============== FLAKE - retry %s/%s ===============\n' +
+                                       'Rerun ' + fnName + description + ' in control flow',
+                                       global._PRTRCTR_RETRIES, global._MAX_PRTRCTR_RETRIES);
+            return flow.execute(controlFlowExecute, logTitle).then(resolveFlow, rejectFlow);
+          }
+
           err.stack = err.stack + '\nFrom asynchronous test: \n' + driverError.stack;
           done.fail(err);
-        });
+        }
+
+        flow.execute(controlFlowExecute, 'Run ' + fnName + description + ' in control flow').then(resolveFlow, rejectFlow);
       };
     }
 
